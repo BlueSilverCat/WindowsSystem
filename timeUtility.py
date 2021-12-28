@@ -12,32 +12,32 @@ def getNowTime():
 
 
 def getDateTime(type="basic"):
-  if type == "basic":
-    return time.strftime(Iso8601Basic)
-  elif type == "extended":
+  if type == "extended":
     reTimeZone = re.compile("([+-]\\d\\d)(\\d\\d)")
     timeZone = reTimeZone.sub("\\1:\\2", time.strftime("%z"))
     return time.strftime(f"{Iso8601Extended}{timeZone}")
+  else:  # type == "basic":
+    return time.strftime(Iso8601Basic)
 
 
 def epochToStr(e, type="basic"):
-  if type == "basic":
-    return time.strftime(Iso8601Basic, time.localtime(e))  # gmtime()を使う場合は、tm_gmtoffを加算する
-  elif type == "extended":
+  if type == "extended":
     timeStr = time.strftime(Iso8601Extended, time.localtime(e))
     reTimeZone = re.compile("([+-]\\d\\d)(\\d\\d)$")
     timeZone = time.strftime("%z", time.localtime(e))
     timeZone = reTimeZone.sub("\\1:\\2", timeZone)
     return timeStr + timeZone
+  else:  # type == "basic":
+    return time.strftime(Iso8601Basic, time.localtime(e))  # gmtime()を使う場合は、tm_gmtoffを加算する
 
 
 def strToEpoch(str, type="basic"):
-  if type == "basic":
-    return time.mktime(time.strptime(str, Iso8601Basic))
-  elif type == "extended":
+  if type == "extended":
     reTimeZone = re.compile("(.+)([+-]\\d\\d):(\\d\\d)$")
     timeStr = reTimeZone.sub("\\1\\2\\3", str)
     return time.mktime(time.strptime(timeStr, f"{Iso8601Extended}%z"))
+  else:  # type == "basic":
+    return time.mktime(time.strptime(str, Iso8601Basic))
 
 
 def timeToLocalTime(t):

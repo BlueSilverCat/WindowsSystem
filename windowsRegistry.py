@@ -5,6 +5,7 @@ import collections
 import os.path
 import re
 
+# 手作業でなくてzipで処理しても良い
 Entry = {
   winreg.HKEY_CLASSES_ROOT: "HKEY_CLASSES_ROOT",
   winreg.HKEY_CURRENT_USER: "HKEY_CURRENT_USER",
@@ -14,7 +15,6 @@ Entry = {
   winreg.HKEY_CURRENT_CONFIG: "HKEY_CURRENT_CONFIG",
 }
 
-# 手作業でなくてzipで処理しても良い
 Type = {
   winreg.REG_BINARY: "REG_BINARY",  # winreg.REG_BINARY 何らかの形式のバイナリデータ。
   winreg.REG_DWORD: "REG_DWORD",  # winreg.REG_DWORD 32 ビットの数。
@@ -33,7 +33,7 @@ Type = {
 }
 
 
-def getZeroFillString(i, num=100):
+def getZeroFillString(i, num=10):
   length = len(str(num))
   return str(i).zfill(length)
 
@@ -67,7 +67,7 @@ RegistryValue = collections.namedtuple("RegistryValue", "name data type")
 
 class Registry():
 
-  def __init__(self, key, subKey, depth=0, index=0, maxIndex=0, isRoot=True):
+  def __init__(self, key, subKey, depth=0, index=0, maxIndex=0, parentKey=None):
     self.keyRoot = key
     self.subKey = subKey
     self.depth = depth  # 表示のためのメンバ。親から見ての階層
@@ -78,7 +78,7 @@ class Registry():
     self.subKeys = []
     self.subKeyNum = 0
     self.modifiedDate = ""
-    self.isRoot = isRoot
+    self.parentKey = parentKey
     self.init()
 
   def __repr__(self):
@@ -100,7 +100,7 @@ class Registry():
       self.setQueryInfo(key)
       self.setValues(key)
       self.setSubKeyString(key)
-    if self.isRoot:  # ここの仕組みが気に入らない
+    if self.parentKey is None:  # ここの仕組みが気に入らない
       self.setSubKey()
 
   def setQueryInfo(self, key):
@@ -127,7 +127,7 @@ class Registry():
       for i, subKey in enumerate(key.subKeys):
         if isinstance(subKey, Registry):
           return
-        reg = Registry(key.keyRoot, join(key.subKey, subKey), depth=key.depth + 1, index=i, maxIndex=key.subKeyNum, isRoot=False)  # 先頭がバックスラッシュだと開けないことがあるのでjoinを使う。winregのバグか?
+        reg = Registry(key.keyRoot, join(key.subKey, subKey), depth=key.depth + 1, index=i, maxIndex=key.subKeyNum, parentKey=key)  # 先頭がバックスラッシュだと開けないことがあるのでjoinを使う。winregのバグか?
         key.subKeys[i] = reg
         stack.append(reg)
 
@@ -217,11 +217,11 @@ class RegistryString():
 
   @classmethod
   def getTreeString(cls, registry):
-    string = cls.getInfoString(registry)
+    string = cls.getInfoString(registry, False)
     stack = registry.subKeys[::-1]
     while len(stack) > 0:
       key = stack.pop()
-      string += cls.getInfoString(key)
+      string += cls.getInfoString(key, False)
       stack += key.subKeys[::-1]
     return string
 
@@ -232,7 +232,7 @@ class RegistryString():
     return f"{indent}{index}{cls.getKeyString(registry, setFullPath)}: {registry.subKeyNum}, {registry.valueNum}: ({registry.modifiedDate})\n"
 
   @classmethod
-  def getInfoString(cls, registry, showSubKey=False):
+  def getInfoString(cls, registry, showSubKey=True):
     string = cls.getQueryString(registry, cls.setFullPath)
     values = cls.getValuesString(registry)
     for value in values:
@@ -257,42 +257,27 @@ class RegistryString():
     cls.setFullPath = setFullPath
 
 
-# getKeyInfo(winreg.HKEY_CLASSES_ROOT, "AppID\\Acrobat.exe")
-# getKeyInfo(winreg.HKEY_CLASSES_ROOT, "Application.Reference")
-
-# # reg = Registry(winreg.HKEY_CLASSES_ROOT, "AppID")
-# reg = Registry(winreg.HKEY_CLASSES_ROOT, "AppID\\Acrobat.exe")
-# print(reg)
-# print(reg.getValuesString())
-# print(reg.subKeys)
-
 # with winreg.OpenKey(winreg.HKEY_CLASSES_ROOT, r"\*\OpenWithProgids", access=winreg.KEY_READ | winreg.KEY_WOW64_32KEY) as key:
 #   info = winreg.QueryInfoKey(key)
 #   print(info)
 
-# reg = Registry(winreg.HKEY_CLASSES_ROOT, "")
-# reg = Registry(winreg.HKEY_CLASSES_ROOT, "Local Settings")
+# reg = Registry(winreg.HKEY_CLASSES_ROOT, "AppID")
+# reg = Registry(winreg.HKEY_CLASSES_ROOT, "AppID\\Acrobat.exe")
 reg = Registry(winreg.HKEY_CLASSES_ROOT, "Local Settings\MrtCache")
-# reg.ff()
+# reg = Registry(winreg.HKEY_CLASSES_ROOT, "Local Settings")
+# reg = Registry(winreg.HKEY_CLASSES_ROOT, "Local Settings\MrtCache")
 # reg = Registry(winreg.HKEY_CLASSES_ROOT, r"*\OpenWithList")
-# # print(reg)
-# # print(reg.getInfoString(showSubKey=True))
-# # print(reg.getTreeString(setFullPath=False))
-# printForWindows(reg.getTreeString())
-# reg.setPrintOption(True, True, True)
-# print(reg.getTreeString())
 
 RegistryString.setOption(True, True, True)
 # printForWindows(RegistryString.getKeyString(reg, True))
 # printForWindows(RegistryString.getInfoString(reg))
 # printForWindows(RegistryString.getValuesString(reg))
 printForWindows(RegistryString.getTreeString(reg))
-# printForWindows(reg.getTreeString())
 
-#
 # result = Registry.search(reg, "IsShortcut")
 # result = Registry.search(reg, "{e82a2d71-5b2f-43a0-97b8-81be15854de8}")
+# result = Registry.search(reg, "{e82a2d71-5b2f-43a0-97b8-81be15854de8}")
 result = Registry.search(reg, "Webp")
-RegistryString.setIndent = False
+RegistryString.setOption(False, False, True)
 for i in result:
-  printForWindows(RegistryString.getInfoString(i, True))
+  printForWindows(RegistryString.getInfoString(i))
