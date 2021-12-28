@@ -145,7 +145,7 @@ class Registry():
 
   def searchSelf(self, string, result=None):
     if result is None:
-      result = set()
+      result = []
     pattern = Registry.getCompiled(string)
     self.searchKey(pattern, result)
     self.searchValue(pattern, result)
@@ -154,7 +154,7 @@ class Registry():
   @staticmethod
   def search(registry, string, result=None):
     if result is None:
-      result = set()
+      result = []
     registry.searchSelf(string, result)
     if registry in result:
       return result
@@ -193,7 +193,8 @@ class Registry():
       return
     match = pattern.search(string)
     if match:
-      result.add(self)
+      if self not in result:
+        result.append(self)
 
 
 class RegistryString():
@@ -212,12 +213,12 @@ class RegistryString():
     return f"{os.path.basename(registry.subKey)}"  #
 
   @classmethod
-  def getValuesString(cls, registry):
-    return [cls.getValueString(registry, i) for i in range(registry.valueNum)]
+  def getValuesString(cls, registry, depth):
+    return [cls.getValueString(registry, i, depth) for i in range(registry.valueNum)]
 
   @classmethod
-  def getValueString(cls, registry, i):
-    indent = cls.getIndent(registry.depth)
+  def getValueString(cls, registry, i, depth):
+    indent = cls.getIndent(depth)
     index = cls.getIndex("V", i, registry.valueNum)
     value = registry.values[i]
     if any(value.type == x for x in RegistryString.NoPrint):
@@ -235,25 +236,26 @@ class RegistryString():
     return string
 
   @classmethod
-  def getQueryString(cls, registry, setFullPath):
-    indent = cls.getIndent(registry.depth)
+  def getQueryString(cls, registry, depth, setFullPath):
+    indent = cls.getIndent(depth)
     index = cls.getIndex("K", registry.index, registry.maxIndex)
     return f"{indent}{index}{cls.getKeyString(registry, setFullPath)} ({registry.subKeyNum}, {registry.valueNum}, {registry.modifiedDate})\n"
 
   @classmethod
   def getInfoString(cls, registry, showSubKey=True):
-    string = cls.getQueryString(registry, cls.setFullPath)
-    values = cls.getValuesString(registry)
+    depth = registry.depth if cls.setIndent else 0
+    string = cls.getQueryString(registry, depth, cls.setFullPath)
+    values = cls.getValuesString(registry, depth)
     for value in values:
       string += f"{value}\n"
     if showSubKey:
       for subKey in registry.subKeys:
-        string += f"{cls.getQueryString(subKey, False)}"
+        string += f"{cls.getQueryString(subKey, depth + 1, False)}"
     return string
 
   @classmethod
   def getIndent(cls, depth):
-    return "  " * depth if cls.setIndent else ""
+    return "  " * depth
 
   @classmethod
   def getIndex(cls, t, i, n):
@@ -309,6 +311,7 @@ if __name__ == "__main__":
     output = RegistryString.getInfoString(reg)
 
   if args.search != "":
+    # RegistryString.setOption(False, args.setIndex, args.setFullPath)
     result = Registry.search(reg, args.search)
     output += "\nsearch result:\n"
     for i in result:
