@@ -4,6 +4,8 @@ import datetime
 import collections
 import os.path
 import re
+import sys
+import argparse
 
 # 手作業でなくてzipで処理しても良い
 Entry = {
@@ -31,6 +33,13 @@ Type = {
   winreg.REG_RESOURCE_REQUIREMENTS_LIST: "REG_RESOURCE_REQUIREMENTS_LIST",  # winreg.REG_RESOURCE_REQUIREMENTS_LIST ハードウェアリソースリスト。
   winreg.REG_SZ: "REG_SZ",  # winreg.REG_SZ ヌル文字で終端された文字列。
 }
+
+
+def keyFromValue(d, value, unique=True):
+  result = [k for k, v in d.items() if v == value]
+  if len(result) == 0:
+    return None
+  return result[0] if unique else result
 
 
 def getZeroFillString(i, num=10):
@@ -212,8 +221,8 @@ class RegistryString():
     index = cls.getIndex("V", i, registry.valueNum)
     value = registry.values[i]
     if any(value.type == x for x in RegistryString.NoPrint):
-      return f"  {indent}{index}\"{value.name}\"({Type.get(value.type)})"
-    return f"  {indent}{index}\"{value.name}\"=\"{value.data}\"({Type.get(value.type)})"
+      return f"  {indent}{index}\"{value.name}\" ({Type.get(value.type)})"
+    return f"  {indent}{index}\"{value.name}\" = \"{value.data}\" ({Type.get(value.type)})"
 
   @classmethod
   def getTreeString(cls, registry):
@@ -229,7 +238,7 @@ class RegistryString():
   def getQueryString(cls, registry, setFullPath):
     indent = cls.getIndent(registry.depth)
     index = cls.getIndex("K", registry.index, registry.maxIndex)
-    return f"{indent}{index}{cls.getKeyString(registry, setFullPath)}: {registry.subKeyNum}, {registry.valueNum}: ({registry.modifiedDate})\n"
+    return f"{indent}{index}{cls.getKeyString(registry, setFullPath)} ({registry.subKeyNum}, {registry.valueNum}, {registry.modifiedDate})\n"
 
   @classmethod
   def getInfoString(cls, registry, showSubKey=True):
@@ -257,27 +266,56 @@ class RegistryString():
     cls.setFullPath = setFullPath
 
 
-# with winreg.OpenKey(winreg.HKEY_CLASSES_ROOT, r"\*\OpenWithProgids", access=winreg.KEY_READ | winreg.KEY_WOW64_32KEY) as key:
-#   info = winreg.QueryInfoKey(key)
-#   print(info)
+def argumentParser():
+  parser = argparse.ArgumentParser()
+  parser.add_argument("key", help="レジストリキーを指定する")
+  parser.add_argument("-o", "--outputPath", default="", help="出力先のパス。指定されなかったら標準出力へ出力する")
+  parser.add_argument("-t", "--tree", action="store_true", help="階層構造を表示する。指定されなったらキーとそのサブキーのみ表示する。")
+  parser.add_argument("-s", "--search", default="", help="検索文字列を正規表現で指定する")
 
-# reg = Registry(winreg.HKEY_CLASSES_ROOT, "AppID")
-# reg = Registry(winreg.HKEY_CLASSES_ROOT, "AppID\\Acrobat.exe")
-reg = Registry(winreg.HKEY_CLASSES_ROOT, "Local Settings\MrtCache")
-# reg = Registry(winreg.HKEY_CLASSES_ROOT, "Local Settings")
-# reg = Registry(winreg.HKEY_CLASSES_ROOT, "Local Settings\MrtCache")
-# reg = Registry(winreg.HKEY_CLASSES_ROOT, r"*\OpenWithList")
+  parser.add_argument("-ix", "--setIndex", action="store_true", help="インデックスを表示する")
+  parser.add_argument("-it", "--setIndent", action="store_false", help="インデントを設定しない")
+  parser.add_argument("-fp", "--setFullPath", action="store_false", help="絶対パスで表示しない")
+  parser.add_argument("-a", "--showArgument", action="store_true", help="show arguments.")
+  return parser.parse_args()
 
-RegistryString.setOption(True, True, True)
-# printForWindows(RegistryString.getKeyString(reg, True))
-# printForWindows(RegistryString.getInfoString(reg))
-# printForWindows(RegistryString.getValuesString(reg))
-printForWindows(RegistryString.getTreeString(reg))
 
-# result = Registry.search(reg, "IsShortcut")
-# result = Registry.search(reg, "{e82a2d71-5b2f-43a0-97b8-81be15854de8}")
-# result = Registry.search(reg, "{e82a2d71-5b2f-43a0-97b8-81be15854de8}")
-result = Registry.search(reg, "Webp")
-RegistryString.setOption(False, False, True)
-for i in result:
-  printForWindows(RegistryString.getInfoString(i))
+def getKey(key):
+  reEntry = re.compile(r"\\?([^\\]+)(?:\\(.*))?")
+  match = reEntry.search(key)
+  if match is None:
+    return None, None
+  return keyFromValue(Entry, match.groups("")[0]), match.groups("")[1]
+
+
+if __name__ == "__main__":
+  args = argumentParser()
+  if args.showArgument:
+    print(args)
+
+  keyRoot, subKey = getKey(args.key)
+
+  print(f"\"{Entry.get(keyRoot, '')}\", \"{subKey}\"")
+  if keyRoot is None:
+    print(f"invalid key. {args.key}")
+    sys.exit(1)
+
+  reg = Registry(keyRoot, subKey)
+  output = ""
+  RegistryString.setOption(args.setIndent, args.setIndex, args.setFullPath)
+  if args.tree:
+    output = RegistryString.getTreeString(reg)
+  else:
+    output = RegistryString.getInfoString(reg)
+
+  if args.search != "":
+    result = Registry.search(reg, args.search)
+    output += "\nsearch result:\n"
+    for i in result:
+      output += RegistryString.getInfoString(i)
+
+  if args.outputPath != "":
+    with open(args.outputPath, "w", encoding="utf-8") as file:
+      file.write(output)
+  else:
+    printForWindows(output)
