@@ -248,7 +248,7 @@ class RegistryString():
       string += f"{value}\n"
     if showSubKey:
       for subKey in registry.subKeys:
-        string += f"  {cls.getQueryString(subKey, False)}"
+        string += f"{cls.getQueryString(subKey, False)}"
     return string
 
   @classmethod
